@@ -94,7 +94,7 @@
                    :action 'helm-dictionary-lookup-word
                    :candidate-number-limit 1000)
         :buffer "*Dictionary*"
-        :input (concat hdl-word " ")))
+        :input (concat (downcase hdl-word) " ")))
 
   (provide 'helm-dictionary)
 
