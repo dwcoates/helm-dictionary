@@ -16,58 +16,70 @@
   "Face used for dictionary name."
   :group 'helm-buffers-faces)
 
-(defvar helm-dictionary-column-distance 30)
+(defvar helm-dictionary-column-distance 50)
 
-(defun helm-dictionary-column-space (word)
-  "Return separator between WORD and its corresponding dictionary name."
-  (apply 'concat (make-list (- helm-dictionary-column-distance (length word)) " ")))
 
-(defun helm-dictionary-match-words (word)
-  "Produce the list of matching words for WORD according to dictionary server queries."
+(defun helm-dictionary--display-entry (word dict)
+  "Return string composed of WORD and DICT suitable for display in `helm' buffer."
+  (let ((disp-word (if (> (length word) (- helm-dictionary-column-distance 5))
+                       (concat
+                        (string-trim-right
+                         (truncate-string-to-width
+                          word
+                          (- helm-dictionary-column-distance 8)))
+                        "...")
+                     word))
+        (disp-dict (concat "(from "
+                           (propertize dict 'face 'helm-dictionary-name)
+                           ")")))
+
+    (concat disp-word
+            (apply 'concat
+                   (make-list
+                    (- helm-dictionary-column-distance
+                       (length disp-word))
+                    " "))
+            disp-dict)))
+
+(defun helm-dictionary--sort-results (results)
+  "Return sorted RESULTS.  Helm will not sort results by default."
+  (cl-sort results
+           (lambda (a b) (or (< (length a) (length b))
+                        (and (= (length a) (length b)) (string-lessp a b))))
+           :key '(lambda (r) (car (cdr r)))))
+
+(defun helm-dictionary-match-words (query)
+  "Produce the list of matching words for QUERY according to dictionary server queries."
   (let ((results
          (mapcar
           (lambda (entry)
-            (let* ((dict (cdr entry))
-                   (word (car entry))
-                   (disp (if (> (length word) (- helm-dictionary-column-distance 8))
-                             (concat
-                              (truncate-string-to-width
-                               word
-                               (- helm-dictionary-column-distance 5))
-                              "...")
-                           word)))
-              (add-face-text-property 0 (length dict) 'helm-dictionary-name nil dict)
-              (cons (concat word
-                            (helm-dictionary-column-space word)
-                            "(from "
-                            dict
-                            ")")
-                    entry)))
-          (append (dictionary-do-matching word "*" "substring" 'helm-get-dict-match-sources)
-                  (ignore-errors (dictionary-do-search word "*" 'helm-get-dict-search-sources))))))
-    (cl-sort results
-             (lambda (a b) (or (< (length a) (length b)) (and (= (length a) (length b)) (string-lessp a b))))
-             :key '(lambda (r) (car (cdr r))))))
+            (let ((word (car entry))
+                  (dict (cdr entry)))
+              (cons (helm-dictionary--display-entry word dict) entry)))
+          (append
+           (dictionary-do-matching
+            query "*" "." 'helm-get-dict-match-sources)
+           (ignore-errors
+             (dictionary-do-search query "*" 'helm-get-dict-search-sources))))))
+    (helm-dictionary--sort-results results)
+    ))
 
-(defun helm-dictionary-find-words (word)
-  "Produce the list of matching words for WORD according to dictionary server queries."
-  (let ((results
-         (mapcar
-          (lambda (entry)
-            (let ((word (cdr entry)))
-                                        ;(add-face-text-property 0 (length word) 'helm-dictionary-name nil word)
-              (cons (concat (car entry)
-                                        ;(helm-dictionary-column-space (car entry))
-                            "    "
-                            "(from "
-                            word
-                            ")")
-                    entry)))
-          (append (dictionary-do-matching word "*" "substring" 'helm-get-dict-match-sources)
-                  (ignore-errors (dictionary-do-search word "*" 'helm-get-dict-search-sources))))))
-    (cl-sort results
-             (lambda (a b) (or (< (length a) (length b)) (and (= (length a) (length b)) (string-lessp a b))))
-             :key '(lambda (r) (car (cdr r))))))
+(defun helm-dictionary-search-words ()
+  "Produce the list of matching words for according to dictionary server queries."
+  (let ((query helm-input))
+    (if (> (length query) 2)
+        (let* ((results
+                (mapcar
+                 (lambda (entry)
+                   (let ((word (car entry))
+                         (dict (cdr entry)))
+                     (cons (helm-dictionary--display-entry word dict)
+                           entry)))
+                 (dictionary-do-matching
+                  query "*" "substring" 'helm-get-dict-match-sources))))
+          (helm-dictionary--sort-results results)
+          )
+      nil)))
 
 (defun helm-dictionary-lookup-word (entry)
   "Lookup the definition of ENTRY using the ENTRY's dictionary."
@@ -85,9 +97,7 @@
               (when dictionary
                 (if hash
                     (setcdr hash (cons word (cdr hash)))
-                  (setq result (cons
-                                (cons word dictionary)
-                                result))))))
+                  (add-to-list 'result  (cons word dictionary))))))
           word-list)
     result))
 
@@ -106,8 +116,8 @@
       word-entries
       ))
 
-(defun helm-dictionary-lookup (hdl-word)
-  "Lookup a HDL-WORD's meaning or synonyms using `helm' and `dictionary'."
+(defun helm-dictionary-explore (hde-word)
+  "Explore words similar to HDE-WORD via `helm' and `dictionary'."
   (interactive (list (let ((query (if (use-region-p)
                                      (buffer-substring-no-properties
                                       (region-beginning)
@@ -120,11 +130,20 @@
                             (mapconcat 'identity (-butlast (split-string query "" t)) "")
                           query)))))
   (helm :sources (helm-build-sync-source "Helm Dictionary"
-                   :candidates '(lambda () (helm-dictionary-match-words hdl-word))
+                   :candidates '(lambda () (helm-dictionary-match-words hde-word))
                    :action 'helm-dictionary-lookup-word
                    :candidate-number-limit 2500)
-        :buffer "*Dictionary*"
-        :input (concat (downcase hdl-word) " ")))
+        :buffer "*Explore Dictionary*"))
+
+(defun helm-dictionary-lookup ()
+  "Search for definintions using an assortment of dictionaries via `helm' and `dictionary'."
+  (interactive)
+  (helm :sources (helm-build-async-source "Helm Dictionary"
+                   :candidates-process 'helm-dictionary-search-words)
+                   :action 'helm-dictionary-lookup-word
+                   :candidate-number-limit 2500
+                   :fuzzy-match t)
+        :buffer "*Search Dictionary*")
 
   (provide 'helm-dictionary)
 
