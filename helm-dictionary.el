@@ -10,20 +10,19 @@
 (unless (require 'helm nil t)
   (error "Failure: Could not load `helm-dictionary' dependency `helm'"))
 
-(defun helm-dictionary-match-words ()
-  "Produce the list of matching words according to dictionary server queries."
-  (if (> (length helm-input) 0)
-      (mapcar
-       (lambda (entry)
-         (cons (concat (car entry) "\t(" (cdr entry) ")") entry))
-       (dictionary-do-matching helm-input "*" "." 'helm-get-dict-sources))
-    nil))
+(defun helm-dictionary-match-words (word)
+  "Produce the list of matching words for WORD according to dictionary server queries."
+  (mapcar
+   (lambda (entry)
+     (cons (concat (car entry) "\t(" (cdr entry) ")") entry))
+   (append (dictionary-do-matching word "*" "." 'helm-get-dict-match-sources)
+           (dictionary-do-search word "*" 'helm-get-dict-search-sources))))
 
 (defun helm-dictionary-lookup-word (entry)
   "Lookup the definition of ENTRY using the ENTRY's dictionary."
   (dictionary-new-search entry))
 
-(defun helm-get-dict-sources (reply)
+(defun helm-get-dict-match-sources (reply)
   "Get the dictionary results for REPLY."
   (let ((word-list (dictionary-simple-split-string (dictionary-read-answer) "\n+"))
         (result nil))
@@ -41,25 +40,41 @@
           word-list)
     result))
 
+(defun helm-get-dict-search-sources (reply)
+  "Get the dictionary results for REPLY."
+    (let (word-entries)
+      (setq reply (dictionary-read-reply-and-split))
+      (while (dictionary-check-reply reply 151)
+        (let* ((reply-list (dictionary-reply-list reply))
+               (dictionary (nth 2 reply-list))
+               (description (nth 3 reply-list))
+               (word (nth 1 reply-list)))
+          (add-to-list 'word-entries (cons word dictionary))
+          (dictionary-read-answer)
+          (setq reply (dictionary-read-reply-and-split))))
+      word-entries
+      ))
 
-(defun helm-dictionary-lookup (word)
-  "Lookup a WORD's meaning or synonyms using `helm' and `dictionary'."
+(defun helm-dictionary-lookup (hdl-word)
+  "Lookup a HDL-WORD's meaning or synonyms using `helm' and `dictionary'."
   (interactive (list (let ((query (if (use-region-p)
                                      (buffer-substring-no-properties
                                       (region-beginning)
                                       (region-end))
-                                   (substring-no-properties (word-at-point)))))
-                       (if (equal (car (last (split-string query "" t))) "s")
-                           (mapconcat 'identity (-butlast (split-string query "" t)) "")
-                         query))))
+                                   (substring-no-properties (or (word-at-point) "")))))
+                       (read-from-minibuffer
+                        "Match Word: "
+                        ;; remove the 's' at the end of query if it's there
+                        (if (equal (car (last (split-string query "" t))) "s")
+                            (mapconcat 'identity (-butlast (split-string query "" t)) "")
+                          query)))))
   (helm :sources (helm-build-sync-source "Helm Dictionary"
-                 :candidates 'helm-dictionary-match-words
-                 :action 'helm-dictionary-lookup-word
-                 :candidate-number-limit 1000
-                 :requires-pattern 2)
-        :input word
-        :buffer "*Dictionary*"))
+                   :candidates '(lambda () (helm-dictionary-match-words hdl-word))
+                   :action 'helm-dictionary-lookup-word
+                   :candidate-number-limit 1000)
+        :buffer "*Dictionary*"
+        :input hdl-word))
 
-(provide 'helm-dictionary)
+  (provide 'helm-dictionary)
 
 ;;; helm-dictionary.el ends here
