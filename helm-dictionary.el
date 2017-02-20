@@ -10,12 +10,29 @@
 (unless (require 'helm nil t)
   (error "Failure: Could not load `helm-dictionary' dependency `helm'"))
 
+(defface helm-dictionary-name
+  '((((background dark)) :foreground "RosyBrown")
+    (((background light)) :foreground "SlateGray"))
+  "Face used for dictionary name."
+  :group 'helm-buffers-faces)
+
+(defvar helm-dictionary-column-distance 20)
+
+(defun helm-dictionary-column-space (word)
+  "Return separator between WORD and its corresponding dictionary name."
+  (apply 'concat (make-list (- helm-dictionary-column-distance (length word)) " ")))
+
 (defun helm-dictionary-match-words (word)
   "Produce the list of matching words for WORD according to dictionary server queries."
   (let ((results
          (mapcar
           (lambda (entry)
-            (cons (concat (car entry) "\t(" (cdr entry) ")") entry))
+            (let ((word (cdr entry)))
+              (add-face-text-property 0 (length word) 'helm-dictionary-name nil word)
+              (cons (concat (car entry) (helm-dictionary-column-space (car entry)) "(from "
+                            word
+                            ")")
+                    entry)))
           (append (dictionary-do-matching word "*" "." 'helm-get-dict-match-sources)
                   (dictionary-do-search word "*" 'helm-get-dict-search-sources)))))
     (cl-sort results
@@ -77,7 +94,7 @@
                    :action 'helm-dictionary-lookup-word
                    :candidate-number-limit 1000)
         :buffer "*Dictionary*"
-        :input hdl-word))
+        :input (concat hdl-word " ")))
 
   (provide 'helm-dictionary)
 
