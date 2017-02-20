@@ -16,7 +16,7 @@
   "Face used for dictionary name."
   :group 'helm-buffers-faces)
 
-(defvar helm-dictionary-column-distance 20)
+(defvar helm-dictionary-column-distance 30)
 
 (defun helm-dictionary-column-space (word)
   "Return separator between WORD and its corresponding dictionary name."
@@ -27,14 +27,44 @@
   (let ((results
          (mapcar
           (lambda (entry)
+            (let* ((dict (cdr entry))
+                   (word (car entry))
+                   (disp (if (> (length word) (- helm-dictionary-column-distance 8))
+                             (concat
+                              (truncate-string-to-width
+                               word
+                               (- helm-dictionary-column-distance 5))
+                              "...")
+                           word)))
+              (add-face-text-property 0 (length dict) 'helm-dictionary-name nil dict)
+              (cons (concat word
+                            (helm-dictionary-column-space word)
+                            "(from "
+                            dict
+                            ")")
+                    entry)))
+          (append (dictionary-do-matching word "*" "substring" 'helm-get-dict-match-sources)
+                  (ignore-errors (dictionary-do-search word "*" 'helm-get-dict-search-sources))))))
+    (cl-sort results
+             (lambda (a b) (or (< (length a) (length b)) (and (= (length a) (length b)) (string-lessp a b))))
+             :key '(lambda (r) (car (cdr r))))))
+
+(defun helm-dictionary-find-words (word)
+  "Produce the list of matching words for WORD according to dictionary server queries."
+  (let ((results
+         (mapcar
+          (lambda (entry)
             (let ((word (cdr entry)))
-              (add-face-text-property 0 (length word) 'helm-dictionary-name nil word)
-              (cons (concat (car entry) (helm-dictionary-column-space (car entry)) "(from "
+                                        ;(add-face-text-property 0 (length word) 'helm-dictionary-name nil word)
+              (cons (concat (car entry)
+                                        ;(helm-dictionary-column-space (car entry))
+                            "    "
+                            "(from "
                             word
                             ")")
                     entry)))
-          (append (dictionary-do-matching word "*" "." 'helm-get-dict-match-sources)
-                  (dictionary-do-search word "*" 'helm-get-dict-search-sources)))))
+          (append (dictionary-do-matching word "*" "substring" 'helm-get-dict-match-sources)
+                  (ignore-errors (dictionary-do-search word "*" 'helm-get-dict-search-sources))))))
     (cl-sort results
              (lambda (a b) (or (< (length a) (length b)) (and (= (length a) (length b)) (string-lessp a b))))
              :key '(lambda (r) (car (cdr r))))))
@@ -92,7 +122,7 @@
   (helm :sources (helm-build-sync-source "Helm Dictionary"
                    :candidates '(lambda () (helm-dictionary-match-words hdl-word))
                    :action 'helm-dictionary-lookup-word
-                   :candidate-number-limit 1000)
+                   :candidate-number-limit 2500)
         :buffer "*Dictionary*"
         :input (concat (downcase hdl-word) " ")))
 
