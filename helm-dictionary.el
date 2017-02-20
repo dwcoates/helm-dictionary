@@ -12,11 +12,15 @@
 
 (defun helm-dictionary-match-words (word)
   "Produce the list of matching words for WORD according to dictionary server queries."
-  (mapcar
-   (lambda (entry)
-     (cons (concat (car entry) "\t(" (cdr entry) ")") entry))
-   (append (dictionary-do-matching word "*" "." 'helm-get-dict-match-sources)
-           (dictionary-do-search word "*" 'helm-get-dict-search-sources))))
+  (let ((results
+         (mapcar
+          (lambda (entry)
+            (cons (concat (car entry) "\t(" (cdr entry) ")") entry))
+          (append (dictionary-do-matching word "*" "." 'helm-get-dict-match-sources)
+                  (dictionary-do-search word "*" 'helm-get-dict-search-sources)))))
+    (cl-sort results
+             (lambda (a b) (or (< (length a) (length b)) (and (= (length a) (length b)) (string-lessp a b))))
+             :key '(lambda (r) (car (cdr r))))))
 
 (defun helm-dictionary-lookup-word (entry)
   "Lookup the definition of ENTRY using the ENTRY's dictionary."
